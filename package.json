@@ -1,0 +1,6 @@
+{
+  "name": "debank",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Claude Code skill for fetching DeFi portfolio data from DeBank"
+}
