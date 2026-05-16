@@ -68,7 +68,7 @@ Two formats are available: **simple** (default) and **full** (richer fields, use
 
 ### Simple Format
 
-Two sections in one file, separated by a blank line:
+Extracted from the page snapshot. Two sections in one file, separated by a blank line:
 
 ```
 chain,section,name,type,amount,price_usd,value_usd
@@ -84,51 +84,86 @@ Ethereum,Protocol,ether.fi,Locked,"164.05 ETH",358208.59
 
 ### Full Format
 
-All simple fields plus additional metadata extracted from the snapshot where available:
+The full format is sourced from the DeBank API response, not the snapshot.
+After page load, intercept the network call to get the raw JSON:
 
-**Wallet tokens** (`debank_{address_short}_full.csv`):
 ```
-chain,section,name,type,amount,price_usd,value_usd,token_address,token_symbol,protocol_adapter
-Base,Wallet,ETH,Token,5.9992,2183.50,13099.18,,ETH,
-Base,Wallet,weETH,Token,2.5750,2389.69,6153.44,0x04c0599ae5a44757c0af6f9ec3b93da8976c150a,weETH,
-...
+browser_network_requests  →  find URL matching /portfolio/project_list
+browser_network_request(index, part="response-body")  →  parse JSON
 ```
 
-**Protocol positions** (appended after a blank line):
+The API endpoint is:
 ```
-chain,section,protocol,type,pool,value_usd,token_address,token_symbol,amount,protocol_url,controller
-Base,Protocol,Hydrex,Liquidity Pool,weETH/WETH,529294.47,"0x04c0599ae5a44757c0af6f9ec3b93da8976c150a,0x4200000000000000000000000000000000000006","weETH,WETH","68.2099,167.7555",https://www.hydrex.fi/,
-Ethereum,Protocol,ether.fi,Locked,Withdraw Request,358208.59,,ETH,164.0525,https://www.ether.fi/,
-Optimism,Protocol,Merkl,Rewards,,339.58,0x4200000000000000000000000000000000000042,OP,2528.5108,https://app.merkl.xyz,
+https://api.debank.com/portfolio/project_list?user_addr={address}
 ```
 
-**Full format extra fields:**
+Flatten to **one row per token per position** so the output is query-friendly. The columns are:
 
-| Field | Source in snapshot |
-|-------|--------------------|
-| `token_address` | Token link href — extract contract address from `/token/{chain}/{address}` path; leave empty for native tokens |
-| `token_symbol` | Token name text |
-| `protocol_adapter` | Protocol name from position header (for wallet tokens held via a protocol) |
-| `pool` | Pool column text (for protocol positions) |
-| `protocol_url` | href from the external link next to the protocol name |
-| `controller` | Controller address if shown in the position (leave empty if not present) |
+```
+chain,section,protocol_id,protocol_name,protocol_url,protocol_tvl,
+position_type,detail_types,position_description,position_index,
+adapter_id,controller,pool_id,pool_created_at,
+asset_usd_value,debt_usd_value,net_usd_value,
+token_address,token_symbol,token_display_symbol,token_name,
+token_amount,token_price_usd,token_value_usd,token_decimals,token_chain,token_verified
+```
 
-For multi-token pools (LP positions), use comma-separated values within a single quoted field for `token_address`, `token_symbol`, and `amount`.
+**Field mapping from JSON response:**
+
+| CSV column | JSON path |
+|------------|-----------|
+| `chain` | `data[].chain` |
+| `section` | always `"Protocol"` |
+| `protocol_id` | `data[].id` |
+| `protocol_name` | `data[].name` |
+| `protocol_url` | `data[].site_url` |
+| `protocol_tvl` | `data[].tvl` |
+| `position_type` | `data[].portfolio_item_list[].name` |
+| `detail_types` | `data[].portfolio_item_list[].detail_types` joined with `\|` |
+| `position_description` | `data[].portfolio_item_list[].detail.description` (may be absent) |
+| `position_index` | `data[].portfolio_item_list[].position_index` |
+| `adapter_id` | `data[].portfolio_item_list[].pool.adapter_id` |
+| `controller` | `data[].portfolio_item_list[].pool.controller` |
+| `pool_id` | `data[].portfolio_item_list[].pool.id` |
+| `pool_created_at` | `data[].portfolio_item_list[].pool.time_at` (unix timestamp) |
+| `asset_usd_value` | `data[].portfolio_item_list[].stats.asset_usd_value` |
+| `debt_usd_value` | `data[].portfolio_item_list[].stats.debt_usd_value` |
+| `net_usd_value` | `data[].portfolio_item_list[].stats.net_usd_value` |
+| `token_address` | `asset_token_list[].id` (`"eth"` = native, no contract) |
+| `token_symbol` | `asset_token_list[].symbol` |
+| `token_display_symbol` | `asset_token_list[].optimized_symbol` |
+| `token_name` | `asset_token_list[].name` |
+| `token_amount` | `asset_token_list[].amount` |
+| `token_price_usd` | `asset_token_list[].price` |
+| `token_value_usd` | `token_amount × token_price_usd` (compute) |
+| `token_decimals` | `asset_token_list[].decimals` |
+| `token_chain` | `asset_token_list[].chain` |
+| `token_verified` | `asset_token_list[].is_verified` |
+
+**Example output** (one row per token):
+```
+chain,section,protocol_id,protocol_name,protocol_url,protocol_tvl,position_type,detail_types,position_description,position_index,adapter_id,controller,pool_id,pool_created_at,asset_usd_value,debt_usd_value,net_usd_value,token_address,token_symbol,token_display_symbol,token_name,token_amount,token_price_usd,token_value_usd,token_decimals,token_chain,token_verified
+base,Protocol,base_hydrexfi,Hydrex,https://www.hydrex.fi/,66680431.66,Liquidity Pool,common,,29949,scribe_v3_liquidity,0xc63e9672f8e93234c73ce954a1d1292e4103ab86,0xc63e9672f8e93234c73ce954a1d1292e4103ab86,1750087429,528374.09,0,528374.09,0x04c0599ae5a44757c0af6f9ec3b93da8976c150a,weETH,weETH,Wrapped eETH,68.20993550,2386.62,162790.02,18,base,true
+base,Protocol,base_hydrexfi,Hydrex,https://www.hydrex.fi/,66680431.66,Liquidity Pool,common,,29949,scribe_v3_liquidity,0xc63e9672f8e93234c73ce954a1d1292e4103ab86,0xc63e9672f8e93234c73ce954a1d1292e4103ab86,1750087429,528374.09,0,528374.09,0x4200000000000000000000000000000000000006,WETH,WETH,Wrapped Ether,167.75546436,2179.26,365584.06,18,base,true
+eth,Protocol,etherfi,ether.fi,https://www.ether.fi/,4555487713.56,Locked,locked,Withdraw Request,,etherfi_locked,0x7d5706f6ef3f89b3951e23e557cdfbc3239d4e2c,0x7d5706f6ef3f89b3951e23e557cdfbc3239d4e2c,1699344455,357513.01,0,357513.01,eth,ETH,ETH,ETH,164.05248049,2179.26,357513.01,18,eth,true
+op,Protocol,op_merkl,Merkl,https://app.merkl.xyz,12857.91,Rewards,common,,,merkl_reward,0x3ef3d8ba38ebe18db133cec108f4d14ce00dd9ae,0x3ef3d8ba38ebe18db133cec108f4d14ce00dd9ae,1676997987,339.07,0,339.07,0x4200000000000000000000000000000000000042,OP,OP,Optimism,2528.51079384,0.1341,339.07,18,op,true
+```
 
 ### Steps
 
-1. Extract all wallet tokens and protocol positions from the snapshot.
-2. Default to simple format unless the user asks for full/detailed.
-3. Write to `debank_{address_short}.csv` (simple) or `debank_{address_short}_full.csv` (full), using the Write tool.
-4. Confirm the file path to the user.
+1. Extract wallet tokens and protocol positions from the page snapshot (both formats).
+2. For full format, additionally call `browser_network_requests` filtered to `/portfolio/project_list`, then `browser_network_request` to read the response body JSON.
+3. Default to simple format unless the user asks for full/detailed.
+4. Write to `debank_{address_short}.csv` (simple) or `debank_{address_short}_full.csv` (full), using the Write tool.
+5. Confirm the file path to the user.
 
 ### Rules
 
-- Column order: `chain` first, then `section`, then asset fields.
+- Column order: `chain` first, then `section`, then protocol fields, then position fields, then token fields.
 - Wrap values containing commas or special characters in double quotes.
-- Omit price for protocol positions (leave the field empty).
-- Use the short chain name (e.g. `Base`, `Ethereum`, `Optimism`).
-- Leave a field empty rather than guessing if the data is not in the snapshot.
+- Use raw chain IDs from the API (e.g. `base`, `eth`, `op`) — do not normalize to display names in full format.
+- Simple format uses display chain names (e.g. `Base`, `Ethereum`, `Optimism`).
+- Leave a field empty rather than guessing if the data is absent.
 
 ## Notes
 
