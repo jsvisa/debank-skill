@@ -1,6 +1,6 @@
 # debank — Claude Code Skill
 
-Give Claude the ability to fetch a wallet's full DeFi portfolio from [DeBank](https://debank.com) — total balance, token holdings, and protocol positions across all chains.
+Give Claude the ability to fetch a wallet's full DeFi portfolio from [DeBank](https://debank.com) — total balance, token holdings, and protocol positions across all chains. Supports plain display and CSV export (simple or full).
 
 ## What you say → what Claude does
 
@@ -21,6 +21,8 @@ Protocols:
   Uniswap v3  LP         $X,XXX
   ...
 ```
+
+**"Export it as CSV"** → writes `debank_0x754fab47.csv` (simple) or `debank_0x754fab47_full.csv` (full, with token addresses, protocol URLs, etc.)
 
 ## How it works
 
@@ -45,7 +47,56 @@ curl -fsSL https://raw.githubusercontent.com/jsvisa/debank-skill/main/skills/deb
 
 ## Requirements
 
-- Claude Code with Playwright MCP enabled (for browser rendering)
+### Playwright MCP
+
+This skill requires the [Playwright MCP server](https://github.com/microsoft/playwright-mcp) for browser rendering. Install it with:
+
+```bash
+npm install -g @playwright/mcp
+```
+
+Then add it to your Claude Code MCP config (`~/.claude/mcp.json` or via `/mcp add`):
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    }
+  }
+}
+```
+
+### Using a different browser
+
+If the default Playwright browser doesn't work (e.g. missing system Chromium), point it at a browser you already have installed via `~/.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest",
+        "--browser", "chromium",
+        "--executable-path", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+      ],
+      "env": {},
+      "type": "stdio"
+    }
+  }
+}
+```
+
+Common paths:
+
+| Browser | Path |
+|---------|------|
+| Google Chrome (Mac) | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` |
+| Brave (Mac) | `/Applications/Brave Browser.app/Contents/MacOS/Brave Browser` |
+| Chromium (Linux) | `/usr/bin/chromium-browser` |
+| Google Chrome (Linux) | `/usr/bin/google-chrome` |
 
 ## License
 
