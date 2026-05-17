@@ -66,6 +66,8 @@ Protocols:
 If the user requests a CSV export, write the portfolio to a file after extracting the data.
 Two formats are available: **simple** (default) and **full** (richer fields, use when user asks for "full" or "detailed").
 
+**If the page is already loaded in the session** (e.g. you already printed a summary), skip navigation — use the existing snapshot for simple format, and `browser_network_requests` for full format. Do not re-navigate to DeBank.
+
 ### Simple Format
 
 Extracted from the page snapshot. Two sections in one file, separated by a blank line:
