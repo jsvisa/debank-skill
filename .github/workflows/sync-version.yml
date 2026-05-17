@@ -1,0 +1,38 @@
+name: Sync package.json version
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  sync-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update package.json
+        run: |
+          tmp=$(mktemp)
+          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' package.json > "$tmp"
+          mv "$tmp" package.json
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet package.json; then
+            echo "package.json already at ${GITHUB_REF_NAME#v}, skipping"
+          else
+            git add package.json
+            git commit -m "chore: sync package.json to ${GITHUB_REF_NAME}"
+            git push origin main
+          fi
